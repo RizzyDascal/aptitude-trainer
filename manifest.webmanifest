@@ -1,0 +1,2 @@
+{"name":"Aptitude Trainer","short_name":"Aptitude","description":"Daily aptitude-test training: 15,000+ validated questions across nine categories with adaptive difficulty.","start_url":"./index.html","scope":"./","display":"standalone","orientation":"portrait","background_color":"#f6f6f3","theme_color":"#1f5eff",
+"icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}
