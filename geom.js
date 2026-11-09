@@ -66,7 +66,7 @@ function rotPanel(panel,deg){const a=deg*D2R,c=Math.cos(a),s=Math.sin(a);return 
 function mirPanel(panel,axis){return xfPanel(panel,axis==='h'?(x,y)=>[x,-y]:(x,y)=>[-x,y]);}
 // SVG rendering
 let HID=0;
-const FILL={n:'#fff',b:'#151515',g:'#9b9b9b',o:'none'};
+const FILL={n:'#fff',b:'#151515',g:'#9b9b9b',l:'#d9d9d9',d:'#5c5c5c',o:'none'};
 function fillAttr(f,hid){return f==='h'?'url(#'+hid+')':(FILL[f]||'#fff');}
 function svg(panel,cls){
   const w=panel.w||100,h=panel.h||100,hid='hp'+(HID++);let s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'" class="'+(cls||'fig')+'">';
