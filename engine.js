@@ -14,8 +14,10 @@ function normState(s){const b=newState();if(!s||typeof s!=='object')return b;for
 // probability of success; target ~70% when ability == difficulty
 const pCorrect=(th,d)=>1/(1+Math.exp(-(1.5*(th-d)+0.85)));
 function score(correct,ms,tt){if(!correct)return 0;const r=ms/1000/(tt||40);return r<=1?1:clamp(1-0.25*(r-1),0.75,1);}
-function update(S,q,correct,ms,choice){const c=q.c,st=S.stats[c];const th=S.ability[c];const P=pCorrect(th,q.d);const s=score(correct,ms,q.tt);
-  const K=Math.max(0.1,0.55/Math.sqrt(1+st.n/10));S.ability[c]=clamp(th+K*(s-P),1,6.5);
+function update(S,q,correct,ms,opt){opt=opt||{};const c=q.c,st=S.stats[c];const th=S.ability[c];const P=pCorrect(th,q.d);const s=score(correct,ms,q.tt);
+  // streaks: 3+ right (or wrong) in a row in a category moves the level faster, so easy/hard runs don't drag on
+  st.sk=correct?Math.max(0,st.sk||0)+1:Math.min(0,st.sk||0)-1;const run=Math.abs(st.sk);const boost=run>=3&&((s-P>0)===(st.sk>0))?1+0.6*Math.min(run-2,4):1;
+  const K=Math.max(0.1,0.55/Math.sqrt(1+st.n/10))*boost;if(!opt.noab)S.ability[c]=clamp(th+K*(s-P),1,6.5);
   st.n++;if(correct)st.c++;st.t+=ms;const dd=st.d[q.d]||(st.d[q.d]=[0,0,0]);dd[0]++;if(correct)dd[1]++;dd[2]+=ms;const ff=st.f[q.f]||(st.f[q.f]=[0,0,0]);ff[0]++;if(correct)ff[1]++;ff[2]+=ms;
   const sn=S.seen[q.id]||[0,0,0,0];sn[0]++;if(correct)sn[1]++;sn[2]=Math.floor(Date.now()/1000);sn[3]=correct?1:0;S.seen[q.id]=sn;S.updated=Date.now();
   return {before:th,after:S.ability[c],P};}
@@ -45,9 +47,30 @@ function buildAssessment(I,S,opt){opt=opt||{};const N=opt.n||50;const cs=CATS.ma
   for(const c of cs){const lastF=[];for(let k=0;k<per[c];k++){const d=opt.adaptive?targetLevel(S.ability[c]):rnd(mix);const q=pick(I,S,c,d,{used,avoidF:lastF.slice(-2)});if(q){used.add(q.id);qs.push(q);lastF.push(q.f);}}}
   // interleave so categories are mixed, roughly easier-first like real tests
   qs.sort((a,b)=>(a.d+Math.random()*2.2)-(b.d+Math.random()*2.2));return qs;}
+
+// ---------- Screening: ~30 questions, Bayesian estimate of each category's level ----------
+const GRID=[];for(let t=1;t<=6.5001;t+=0.25)GRID.push(+t.toFixed(2));
+// Each category keeps its own likelihood; its prior is centred on the overall level estimated from ALL answers so far
+// (abilities across categories are correlated), so 3 questions per category are enough for a usable estimate.
+const gauss=(m,sd)=>GRID.map(t=>Math.exp(-((t-m)**2)/(2*sd*sd)));
+function newScreen(n){const lik={},cnt={};for(const [c] of CATS){lik[c]=GRID.map(()=>1);cnt[c]=0;}return {lik,cnt,n:n||30};}
+function statsOf(p){const z=p.reduce((a,b)=>a+b,0);const m=GRID.reduce((a,t,i)=>a+t*p[i],0)/z;const v=GRID.reduce((a,t,i)=>a+(t-m)*(t-m)*p[i],0)/z;return {m,sd:Math.sqrt(v)};}
+function scrOverall(sc){const g=gauss(3.5,3);for(const [c] of CATS)sc.lik[c].forEach((x,i)=>g[i]*=x);return statsOf(g);}
+function scrPost(sc,c){const o=scrOverall(sc);const pr=gauss(o.m,1.25);return pr.map((x,i)=>x*sc.lik[c][i]);}
+function scrStats(sc,c){return statsOf(scrPost(sc,c));}
+function screenNext(I,S,sc,ctx){ctx=ctx||{};const cs=CATS.map(x=>x[0]);const per=Math.floor(sc.n/cs.length);
+  let cand=cs.filter(c=>sc.cnt[c]<per);const phase2=!cand.length;if(phase2)cand=cs;const minc=Math.min(...cand.map(c=>sc.cnt[c]));cand=cand.filter(c=>sc.cnt[c]===minc);
+  if(cand.length>1&&ctx.last)cand=cand.filter(c=>c!==ctx.last);
+  const c=phase2?cand.slice().sort((a,b)=>scrStats(sc,b).sd-scrStats(sc,a).sd)[0]:rnd(cand);
+  const {m}=scrStats(sc,c);const d=clamp(Math.round(m+0.5),1,MAXL);// aim where the answer is least predictable
+  return pick(I,S,c,d,{used:ctx.used,avoidF:(ctx.recentF||[]).slice(-3)});}
+function screenUpdate(sc,q,correct,ms){const s=score(correct,ms,q.tt);const p=sc.lik[q.c];
+  for(let i=0;i<GRID.length;i++){const P=0.15+0.82*pCorrect(GRID[i],q.d);p[i]*=correct?Math.pow(P,s)*Math.pow(1-P,1-s):1-P;}
+  const mx=Math.max(...p);for(let i=0;i<p.length;i++)p[i]/=mx;sc.cnt[q.c]++;}
+function screenApply(S,sc){const out={};for(const [c] of CATS){if(sc.cnt[c]<2)continue;const {m,sd}=scrStats(sc,c);out[c]={th:m,sd};S.ability[c]=clamp(m,1,6.5);S.stats[c].sk=0;}S.screened=Date.now();return out;}
 function overall(S){const v=CATS.map(([c])=>S.ability[c]);return v.reduce((a,b)=>a+b,0)/v.length;}
 function levelName(th){return LEVELS[clamp(Math.round(th),1,MAXL)];}
 function poolInfo(I,S,c){let tot=0,seen=0;for(let d=1;d<=MAXL;d++)for(const q of I.ix[c][d]){tot++;if(S.seen[q.id])seen++;}return {tot,seen};}
-const API={MAXL,FW,CATS,CATNAME,LEVELS,FMT,newState,normState,pCorrect,score,update,buildIndex,pick,targetLevel,chooseCat,nextAdaptive,buildAssessment,overall,levelName,poolInfo,clamp};
+const API={newScreen,screenNext,screenUpdate,screenApply,scrStats,MAXL,FW,CATS,CATNAME,LEVELS,FMT,newState,normState,pCorrect,score,update,buildIndex,pick,targetLevel,chooseCat,nextAdaptive,buildAssessment,overall,levelName,poolInfo,clamp};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;else root.Engine=API;
 })(typeof window!=='undefined'?window:globalThis);

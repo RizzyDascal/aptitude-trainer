@@ -58,6 +58,7 @@ const LVC=['#64748b','#64748b','#2563eb','#0d9488','#ea580c','#9333ea','#b91c1c'
 const lvColor=th=>LVC[E.clamp(Math.round(th),1,E.MAXL)];
 function levelTile(th){const L=E.clamp(Math.round(th),1,E.MAXL);const frac=L===E.MAXL&&th>=E.MAXL?1:E.clamp(th-(L-0.5),0,1);const next=L<E.MAXL?E.LEVELS[L+1]:null;
   return `<div class="lvtile" style="--lc:${lvColor(th)}"><div class="row" style="align-items:baseline;gap:8px"><div class="v">${th.toFixed(1)}</div><div class="lvname">${E.LEVELS[L]}</div></div><div class="lbar"><i style="width:${Math.round(frac*100)}%"></i></div><div class="l">${next?Math.round(frac*100)+'% of the way to '+next:'Top level'} · overall level</div></div>`;}
+const SCREEN=['screen','Level screening','30 questions (about 12 min) across all nine categories. Finds your level in each one quickly and starts you there, so you skip the easy warm-up.','startScreen()','#7c3aed','◇'];
 const MODES=[['adaptive','Adaptive practice','Endless. Picks the category and difficulty for you, leaning on weaker areas. Feedback after each answer.','startAdaptive()','#2563eb','∞'],
  ['assess','Timed assessment','50 questions in 20 minutes across all nine categories, like a recruitment test. Review at the end.',"go('assess')",'#e11d48','⏱'],
  ['quick','Quick practice','A short session. Choose length, categories and difficulty.',"go('quick')",'#16a34a','⚡'],
@@ -69,7 +70,7 @@ function viewHome(){const tot=E.CATS.reduce((a,[c])=>a+S.stats[c].n,0),cor=E.CAT
    <div class="stat"><div class="v">${tot.toLocaleString()}</div><div class="l">Questions answered${today?` · ${today} today`:''}</div></div>
    <div class="stat"><div class="v">${pct(cor,tot)}</div><div class="l">Overall accuracy</div></div>
    <div class="stat"><div class="v">${BANK.length.toLocaleString()}</div><div class="l">Questions in bank</div></div></div>
-  <div class="grid g2">${MODES.map(([k,t,d,fn,c,ic])=>`<button class="mode m2" style="--mc:${c}" onclick="${fn}"><span class="mi">${ic}</span><span class="mt"><b>${t}</b><span>${d}</span></span><span class="ma">→</span></button>`).join('')}</div>
+  <div class="grid g2">${(S.screened?[...MODES,SCREEN]:[SCREEN,...MODES]).map(([k,t,d,fn,c,ic])=>`<button class="mode m2 ${k==='screen'?'wide':''}" style="--mc:${c}" onclick="${fn}"><span class="mi">${ic}</span><span class="mt"><b>${t}</b><span>${d}</span></span><span class="ma">→</span></button>`).join('')}</div>
   <div class="focus"><span class="small muted">Focus areas:</span>${weak.map(([c,n])=>`<button class="fchip" style="--lc:${lvColor(S.ability[c])}" onclick="startCat('${c}',0)">${n} <span>${S.ability[c].toFixed(1)}</span></button>`).join('')}<a class="small" href="#stats" onclick="go('stats');return false" style="margin-left:auto;color:var(--acc)">All categories →</a></div>
   ${Store.cloud?'':`<p class="tiny muted">Progress is saved on this device${IS_APP?'':' (this browser)'} — back it up from Settings.</p>`}`;}
 
@@ -101,6 +102,7 @@ window.setAL=v=>{asCfg.len=v;viewAssessSetup();};window.setAK=v=>{asCfg.kind=v;v
 
 // ---------------- sessions ----------------
 function newSess(mode,opt){return {mode,opt:opt||{},qs:[],ans:[],i:0,recent:[],recentF:[],used:new Set(),start:Date.now(),ab0:{...S.ability},done:false};}
+window.startScreen=()=>{SESS=newSess('screen',{n:30});SESS.sc=E.newScreen(30);nextQ();};
 window.startAdaptive=()=>{SESS=newSess('adaptive',{endless:true});nextQ();};
 window.startQuick=()=>{if(!qsCfg.cats.length){toast('Pick at least one category');return;}SESS=newSess('quick',{n:qsCfg.n,cats:qsCfg.cats.slice(),level:qsCfg.level});nextQ();};
 window.startCat=(c,level,n)=>{SESS=newSess('cat',{cat:c,level:level||0,n:n===undefined?20:n,endless:n===0});nextQ();};
@@ -109,7 +111,8 @@ window.startAssess=()=>{const full=asCfg.len==='full';SESS=newSess('assess',{n:f
 function mkAns(q){const n=q.o.length;let perm=[...Array(n).keys()];if(!q.fo){for(let i=n-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[perm[i],perm[j]]=[perm[j],perm[i]];}}return {perm,choice:null,ms:0,flag:false,ok:null};}
 function nextQ(){const s=SESS;if(!s)return;const o=s.opt;
   if(!o.endless&&s.qs.length>=o.n)return finishImmediate();
-  let q=null;if(s.mode==='adaptive')q=E.nextAdaptive(I,S,{recent:s.recent,recentF:s.recentF,used:s.used});
+  let q=null;if(s.mode==='screen')q=E.screenNext(I,S,s.sc,{used:s.used,recentF:s.recentF,last:s.recent[s.recent.length-1]});
+  else if(s.mode==='adaptive')q=E.nextAdaptive(I,S,{recent:s.recent,recentF:s.recentF,used:s.used});
   else if(s.mode==='quick')q=E.nextAdaptive(I,S,{recent:s.recent,recentF:s.recentF,used:s.used,cats:o.cats,level:o.level||null});
   else q=E.nextAdaptive(I,S,{cat:o.cat,recentF:s.recentF,used:s.used,level:o.level||null});
   if(!q){toast('No more questions available for this selection');return finishImmediate();}
@@ -140,7 +143,7 @@ function renderQ(){const s=SESS,q=s.qs[s.i],a=s.ans[s.i];const fig=q.ot==='f';co
   if(answered&&imm){const nb=$('#nextb');if(nb)nb.focus();}}
 window.choose=k=>{const s=SESS;if(!s||s.done)return;const q=s.qs[s.i],a=s.ans[s.i];const imm=s.mode!=='assess';if(imm&&a.choice!==null)return;
   const oi=a.perm[k];if(oi===undefined)return;
-  if(imm){a.choice=oi;a.ms=Date.now()-s.enter;a.ok=oi===q.a;const u=E.update(S,q,a.ok,a.ms);a.th=u;Store.touch(q);renderQ();}
+  if(imm){a.choice=oi;a.ms=Date.now()-s.enter;a.ok=oi===q.a;const scr=s.mode==='screen';const u=E.update(S,q,a.ok,a.ms,{noab:scr});if(scr)E.screenUpdate(s.sc,q,a.ok,a.ms);a.th=u;Store.touch(q);renderQ();}
   else{a.choice=a.choice===oi?null:oi;renderQ();}};
 function leaveCur(){const s=SESS;const a=s.ans[s.i];a.ms+=Date.now()-s.enter;s.enter=Date.now();}
 window.navQ=d=>{const s=SESS;leaveCur();if(s.i+d>=s.qs.length){askSubmit();return;}s.i=Math.max(0,s.i+d);renderQ();};
@@ -153,8 +156,10 @@ window.submitAssess=(timeUp)=>{const s=SESS;if(!s||s.done)return;leaveCur();s.do
   recordSession(s);Store.flush();if(timeUp)toast('Time is up');renderAssessResults();};
 window.finishImmediate=()=>{const s=SESS;if(!s)return;const answered=s.ans.filter(a=>a.choice!==null).length;if(!answered){SESS=null;go('home');return;}s.done=true;clearInterval(tick._t);
   // drop the unanswered trailing question
-  if(s.ans[s.ans.length-1].choice===null){s.qs.pop();s.ans.pop();}recordSession(s);Store.flush();renderImmResults();};
-function endSession(silent){const s=SESS;if(!s)return;if(s.mode!=='assess'&&s.ans.some(a=>a.choice!==null)){if(s.ans[s.ans.length-1].choice===null){s.qs.pop();s.ans.pop();}recordSession(s);Store.flush();}clearInterval(tick._t);SESS=null;}
+  if(s.ans[s.ans.length-1].choice===null){s.qs.pop();s.ans.pop();}
+  if(s.mode==='screen'){s.res=E.screenApply(S,s.sc);recordSession(s);Store.flush();renderScreenResults();return;}
+  recordSession(s);Store.flush();renderImmResults();};
+function endSession(silent){const s=SESS;if(!s)return;if(s.mode!=='assess'&&s.ans.some(a=>a.choice!==null)){if(s.ans[s.ans.length-1].choice===null){s.qs.pop();s.ans.pop();}if(s.mode==='screen')E.screenApply(S,s.sc);recordSession(s);Store.flush();}clearInterval(tick._t);SESS=null;}
 function recordSession(s){const n=s.qs.length,ans=s.ans.filter(a=>a.choice!==null);const c=s.ans.filter(a=>a.ok).length;const ms=ans.reduce((t,a)=>t+a.ms,0);const cats={};
   s.qs.forEach((q,k)=>{const a=s.ans[k];const x=cats[q.c]||(cats[q.c]=[0,0]);x[0]++;if(a.ok)x[1]++;});
   S.sessions.push({ts:Date.now(),mode:s.mode,n,a:ans.length,c,ms,dur:Date.now()-s.start,cats,avgD:+(s.qs.reduce((t,q)=>t+q.d,0)/Math.max(1,n)).toFixed(2)});if(S.sessions.length>300)S.sessions.splice(0,S.sessions.length-300);
@@ -173,6 +178,14 @@ function renderAssessResults(){const s=SESS;const n=s.qs.length,c=s.ans.filter(a
    ${catBreak(s)}<div class="row" style="margin-top:14px"><button class="btn" onclick="SESS=null;go('home')">Done</button><button class="btn sec" onclick="SESS=null;startAssessAgain()">New assessment</button></div></div>
    <h2>Review</h2><div class="row" style="margin-bottom:8px">${segBtns('rf',[['wrong','Incorrect & unanswered'],['flag','Flagged'],['all','All']],RF,'setRF')}</div><div class="card" id="revlist">${reviewList(s,RF)}</div>`;}
 window.setRF=v=>{RF=v;renderAssessResults();};window.startAssessAgain=()=>go('assess');
+function renderScreenResults(){const s=SESS;const n=s.qs.length,c=s.ans.filter(a=>a.ok).length;const ov=E.overall(S);
+  const rows=E.CATS.map(([k,nm])=>{const r=s.res[k];const qn=s.qs.filter(q=>q.c===k);const qc=qn.filter((q,i)=>s.ans[s.qs.indexOf(q)].ok).length;
+    return `<tr><td>${nm}</td><td>${qc}/${qn.length}</td><td>${r?`<b style="color:${lvColor(r.th)}">${E.levelName(r.th)}</b> <span class="tiny muted">${r.th.toFixed(1)}</span>`:'<span class="muted">not enough answers — unchanged</span>'}</td></tr>`;}).join('');
+  $('#app').innerHTML=`<div class="card"><h3>Screening complete</h3><p class="small muted">${c} of ${n} correct. Your level in each category has been set from these answers; adaptive practice, quick practice and "matched" assessments now start from here and keep adjusting as you go.</p>
+   <div class="toprow" style="grid-template-columns:1fr">${levelTile(ov)}</div>
+   <table><tr><th>Category</th><th>Score</th><th>Level set</th></tr>${rows}</table>
+   <div class="row" style="margin-top:14px"><button class="btn" onclick="SESS=null;startAdaptive()">Start adaptive practice</button><button class="btn sec" onclick="SESS=null;go('home')">Done</button></div></div>
+   <h2>Mistakes</h2><div class="card">${reviewList(s,'wrong')}</div>`;}
 function renderImmResults(){const s=SESS;const n=s.qs.length,c=s.ans.filter(a=>a.ok).length;const ms=s.ans.reduce((t,a)=>t+a.ms,0);
   $('#app').innerHTML=`<div class="card"><h3>Session complete</h3><div class="grid g4" style="margin:10px 0"><div class="kpi"><div class="v">${c}/${n}</div><div class="l">Correct (${pct(c,n)})</div></div><div class="kpi"><div class="v">${n?secs(ms/n):'–'}</div><div class="l">Average time</div></div><div class="kpi"><div class="v">${(s.qs.reduce((t,q)=>t+q.d,0)/Math.max(1,n)).toFixed(1)}</div><div class="l">Average difficulty</div></div><div class="kpi"><div class="v">${E.overall(S).toFixed(2)}</div><div class="l">Overall level now</div></div></div>
    ${catBreak(s)}<div class="row" style="margin-top:14px"><button class="btn" onclick="SESS=null;go('home')">Done</button></div></div>
