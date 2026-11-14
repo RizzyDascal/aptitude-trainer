@@ -58,7 +58,7 @@ const LVC=['#64748b','#64748b','#2563eb','#0d9488','#ea580c','#9333ea','#b91c1c'
 const lvColor=th=>LVC[E.clamp(Math.round(th),1,E.MAXL)];
 function levelTile(th){const L=E.clamp(Math.round(th),1,E.MAXL);const frac=L===E.MAXL&&th>=E.MAXL?1:E.clamp(th-(L-0.5),0,1);const next=L<E.MAXL?E.LEVELS[L+1]:null;
   return `<div class="lvtile" style="--lc:${lvColor(th)}"><div class="row" style="align-items:baseline;gap:8px"><div class="v">${th.toFixed(1)}</div><div class="lvname">${E.LEVELS[L]}</div></div><div class="lbar"><i style="width:${Math.round(frac*100)}%"></i></div><div class="l">${next?Math.round(frac*100)+'% of the way to '+next:'Top level'} · overall level</div></div>`;}
-const SCREEN=['screen','Level screening','30 questions (about 12 min) across all nine categories. Finds your level in each one quickly and starts you there, so you skip the easy warm-up.','startScreen()','#7c3aed','◇'];
+const SCREEN=['screen','Level screening','30 questions (about 12 min) across all nine categories. Finds your level in each one quickly (up to Hard) and starts you there, so you skip the easy warm-up.','startScreen()','#7c3aed','◇'];
 const MODES=[['adaptive','Adaptive practice','Endless. Picks the category and difficulty for you, leaning on weaker areas. Feedback after each answer.','startAdaptive()','#2563eb','∞'],
  ['assess','Timed assessment','50 questions in 20 minutes across all nine categories, like a recruitment test. Review at the end.',"go('assess')",'#e11d48','⏱'],
  ['quick','Quick practice','A short session. Choose length, categories and difficulty.',"go('quick')",'#16a34a','⚡'],
@@ -180,8 +180,9 @@ function renderAssessResults(){const s=SESS;const n=s.qs.length,c=s.ans.filter(a
 window.setRF=v=>{RF=v;renderAssessResults();};window.startAssessAgain=()=>go('assess');
 function renderScreenResults(){const s=SESS;const n=s.qs.length,c=s.ans.filter(a=>a.ok).length;const ov=E.overall(S);
   const rows=E.CATS.map(([k,nm])=>{const r=s.res[k];const qn=s.qs.filter(q=>q.c===k);const qc=qn.filter((q,i)=>s.ans[s.qs.indexOf(q)].ok).length;
-    return `<tr><td>${nm}</td><td>${qc}/${qn.length}</td><td>${r?`<b style="color:${lvColor(r.th)}">${E.levelName(r.th)}</b> <span class="tiny muted">${r.th.toFixed(1)}</span>`:'<span class="muted">not enough answers — unchanged</span>'}</td></tr>`;}).join('');
+    return `<tr><td>${nm}</td><td>${qc}/${qn.length}</td><td>${r?r.kept?`<b style="color:${lvColor(S.ability[k])}">${E.levelName(S.ability[k])}</b> <span class="tiny muted">kept (earned in practice)</span>`:`<b style="color:${lvColor(r.th)}">${E.levelName(r.th)}</b> <span class="tiny muted">${r.th.toFixed(1)}${r.raw>r.th+0.05?' · max for screening':''}</span>`:'<span class="muted">not enough answers — unchanged</span>'}</td></tr>`;}).join('');
   $('#app').innerHTML=`<div class="card"><h3>Screening complete</h3><p class="small muted">${c} of ${n} correct. Your level in each category has been set from these answers; adaptive practice, quick practice and "matched" assessments now start from here and keep adjusting as you go.</p>
+   <p class="small muted">Screening places you no higher than <b style="color:${LVC[4]}">Hard</b>. Elite and Legendary have to be earned through sustained practice${Object.values(s.res).some(r=>r.raw>4.25)?' — you scored above that in some categories, so expect to climb quickly':''}.</p>
    <div class="toprow" style="grid-template-columns:1fr">${levelTile(ov)}</div>
    <table><tr><th>Category</th><th>Score</th><th>Level set</th></tr>${rows}</table>
    <div class="row" style="margin-top:14px"><button class="btn" onclick="SESS=null;startAdaptive()">Start adaptive practice</button><button class="btn sec" onclick="SESS=null;go('home')">Done</button></div></div>
